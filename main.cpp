@@ -10,6 +10,7 @@
 #include "include/ChatController.h"
 #include "include/Message.h"
 #include "include/MessageType.h"
+#include "include/ChatHistoryManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -20,6 +21,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<AuthController>("SQChat", 1, 0, "AuthController");
     qmlRegisterType<ChatController>("SQChat", 1, 0, "ChatController");
     qmlRegisterType<Message>("SQChat", 1, 0, "Message");
+    qmlRegisterType<ChatHistoryManager>("SQChat", 1, 0, "ChatHistoryManager");
     
     // 注册枚举类型 - MessageType
     qmlRegisterUncreatableMetaObject(
@@ -28,18 +30,23 @@ int main(int argc, char *argv[])
         1, 0,
         "MessageType",
         "MessageType is an enum and cannot be created"
-    );// 创建全局单例对象
+    );    // 创建全局单例对象
     NetworkManager* networkManager = new NetworkManager(&app);
     AuthController* authController = new AuthController(&app);
     ChatController* chatController = new ChatController(&app);
-    authController->setNetworkManager(networkManager);
+    ChatHistoryManager* chatHistoryManager = new ChatHistoryManager(&app);    authController->setNetworkManager(networkManager);
     chatController->setNetworkManager(networkManager);
+    chatController->setChatHistoryManager(chatHistoryManager);
+    
+    // 连接信号：当用户登录成功时初始化聊天历史管理器
+    QObject::connect(authController, &AuthController::userLoggedIn,
+                     chatController, &ChatController::onUserLoggedIn);
 
-    QQmlApplicationEngine engine;
-      // 将对象暴露给QML
+    QQmlApplicationEngine engine;      // 将对象暴露给QML
     engine.rootContext()->setContextProperty("globalNetworkManager", networkManager);
     engine.rootContext()->setContextProperty("globalAuthController", authController);
     engine.rootContext()->setContextProperty("globalChatController", chatController);
+    engine.rootContext()->setContextProperty("globalChatHistoryManager", chatHistoryManager);
     
     QObject::connect(
         &engine,

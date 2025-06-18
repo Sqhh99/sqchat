@@ -257,8 +257,7 @@ void AuthController::handleLoginResponse(const Message *message)
     m_pendingOperation = PendingOperation::None;
     
     QString status = message->getData("status").toString();
-    
-    if (status == "0") {
+      if (status == "0") {
         // 登录成功
         m_isLoggedIn = true;
         m_currentUserId = message->getData("userId").toString();
@@ -267,6 +266,7 @@ void AuthController::handleLoginResponse(const Message *message)
         emit loginStateChanged();
         emit currentUserChanged();
         emit loginSuccess(m_currentUserId, m_currentUsername);
+        emit userLoggedIn(m_currentUserId); // 新增信号，用于初始化聊天历史
         
         qDebug() << "Login successful. User ID:" << m_currentUserId 
                  << "Username:" << m_currentUsername;

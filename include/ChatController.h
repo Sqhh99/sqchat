@@ -11,6 +11,7 @@
 
 class NetworkManager;
 class Message;
+class ChatHistoryManager;
 
 /**
  * @brief 聊天控制器类
@@ -29,6 +30,7 @@ public:
     explicit ChatController(QObject *parent = nullptr);
     
     void setNetworkManager(NetworkManager *manager);
+    void setChatHistoryManager(ChatHistoryManager *manager);
     
     bool isConnected() const;
     QVariantList friendsList() const { return m_friendsList; }
@@ -56,10 +58,17 @@ public slots:
     
     // 用户列表
     void getUsersList();
-    
-    // 聊天历史
+      // 聊天历史
     void getChatHistory(const QString &type, const QString &targetId, int count = 20);
+    void loadLocalChatHistory(const QString &type, const QString &targetId, int count = 50);
+    void clearChatHistory(const QString &type, const QString &targetId);
+      // 离线消息处理
+    void processOfflineMessages();
+    void clearOfflineMessages();
     
+    // 用户登录处理
+    void onUserLoggedIn(const QString &userId);
+
     // 消息管理
     void recallMessage(const QString &messageId, const QString &type, const QString &targetId);
     void markMessageRead(const QString &messageId, const QString &type, const QString &targetId);
@@ -92,9 +101,10 @@ signals:
     
     // 用户列表信号
     void usersListChanged();
-    
-    // 聊天历史信号
+      // 聊天历史信号
     void chatHistoryReceived(const QString &type, const QString &targetId, const QVariantList &messages);
+    void localChatHistoryLoaded(const QString &type, const QString &targetId, const QVariantList &messages);
+    void offlineMessagesProcessed(int count);
     
     // 消息状态信号
     void messageRecalled(const QString &messageId, const QString &type, const QString &targetId);
@@ -111,8 +121,11 @@ private slots:
 private:
     void parseMessage(int messageType, const QVariantMap &data);
     QVariantMap parseMessageContent(const QString &content);
+    void initializeChatHistory(const QString &userId);
     
     NetworkManager *m_networkManager;
+    ChatHistoryManager *m_chatHistoryManager;
+    QString m_currentUserId; // 当前用户ID
     QVariantList m_friendsList;
     QVariantList m_groupsList;
     QVariantList m_usersList;

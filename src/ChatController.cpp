@@ -2,6 +2,7 @@
 #include "include/NetworkManager.h"
 #include "include/MessageType.h"
 #include "include/Message.h"
+#include "include/ChatHistoryManager.h"
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -10,6 +11,7 @@
 ChatController::ChatController(QObject *parent)
     : QObject(parent)
     , m_networkManager(nullptr)
+    , m_chatHistoryManager(nullptr)
 {
 }
 
@@ -46,6 +48,10 @@ void ChatController::sendPrivateMessage(const QString &toUserId, const QString &
     QVariantMap data;
     data["toUserId"] = toUserId;
     data["content"] = content;
+      // 保存消息到本地
+    if (m_chatHistoryManager && !m_currentUserId.isEmpty()) {
+        m_chatHistoryManager->savePrivateMessage(m_currentUserId, toUserId, content);
+    }
     
     m_networkManager->sendMessage(MessageType::PRIVATE_CHAT, data);
     qDebug() << "Private message sent to:" << toUserId << "content:" << content;
@@ -61,6 +67,10 @@ void ChatController::sendGroupMessage(const QString &groupId, const QString &con
     QVariantMap data;
     data["groupId"] = groupId;
     data["content"] = content;
+      // 保存消息到本地
+    if (m_chatHistoryManager && !m_currentUserId.isEmpty()) {
+        m_chatHistoryManager->saveGroupMessage(groupId, m_currentUserId, content);
+    }
     
     m_networkManager->sendMessage(MessageType::GROUP_CHAT, data);
     qDebug() << "Group message sent to group:" << groupId << "content:" << content;
@@ -290,12 +300,19 @@ void ChatController::handleNetworkDisconnected()
 
 void ChatController::parseMessage(int messageType, const QVariantMap &data)
 {
-    switch (static_cast<MessageType>(messageType)) {
-        case MessageType::LOGIN_RESPONSE:
+    switch (static_cast<MessageType>(messageType)) {        case MessageType::LOGIN_RESPONSE:
             {
                 QString status = data["status"].toString();
                 if (status == "0") {
-                    // 登录成功，无需特殊处理，AuthController会处理
+                    // 登录成功，检查是否有离线消息
+                    QString offlineCountStr = data["offlineMsgCount"].toString();
+                    if (!offlineCountStr.isEmpty()) {
+                        int offlineCount = offlineCountStr.toInt();
+                        if (offlineCount > 0) {
+                            qDebug() << "收到离线消息数量:" << offlineCount;
+                            // 这里服务器会自动发送离线消息，我们只需要等待接收
+                        }
+                    }
                     qDebug() << "Login response received (success)";
                 } else {
                     QString message = data["message"].toString();
@@ -331,26 +348,39 @@ void ChatController::parseMessage(int messageType, const QVariantMap &data)
                 }
             }
             break;
-            
-        case MessageType::PRIVATE_CHAT:
-            emit privateMessageReceived(
-                data["fromUserId"].toString(),
-                data["fromUsername"].toString(),
-                data["content"].toString(),
-                data["messageId"].toString(),
-                data["timestamp"].toString()
-            );
+              case MessageType::PRIVATE_CHAT:
+            {
+                QString fromUserId = data["fromUserId"].toString();
+                QString fromUsername = data["fromUsername"].toString();
+                QString content = data["content"].toString();
+                QString messageId = data["messageId"].toString();
+                QString timestamp = data["timestamp"].toString();
+                  // 保存接收到的消息到本地
+                if (m_chatHistoryManager && !m_currentUserId.isEmpty()) {
+                    qint64 timestampMs = timestamp.toLongLong();
+                    m_chatHistoryManager->savePrivateMessage(fromUserId, m_currentUserId, content, messageId, timestampMs);
+                }
+                
+                emit privateMessageReceived(fromUserId, fromUsername, content, messageId, timestamp);
+            }
             break;
-            
-        case MessageType::GROUP_CHAT:
-            emit groupMessageReceived(
-                data["groupId"].toString(),
-                data["fromUserId"].toString(),
-                data["fromUsername"].toString(),
-                data["content"].toString(),
-                data["messageId"].toString(),
-                data["timestamp"].toString()
-            );
+              case MessageType::GROUP_CHAT:
+            {
+                QString groupId = data["groupId"].toString();
+                QString fromUserId = data["fromUserId"].toString();
+                QString fromUsername = data["fromUsername"].toString();
+                QString content = data["content"].toString();
+                QString messageId = data["messageId"].toString();
+                QString timestamp = data["timestamp"].toString();
+                
+                // 保存接收到的群聊消息到本地
+                if (m_chatHistoryManager) {
+                    qint64 timestampMs = timestamp.toLongLong();
+                    m_chatHistoryManager->saveGroupMessage(groupId, fromUserId, content, messageId, timestampMs);
+                }
+                
+                emit groupMessageReceived(groupId, fromUserId, fromUsername, content, messageId, timestamp);
+            }
             break;
             
         case MessageType::ADD_FRIEND_REQUEST:
@@ -550,4 +580,150 @@ QVariantMap ChatController::parseMessageContent(const QString &content)
     }
     
     return data;
+}
+
+void ChatController::setChatHistoryManager(ChatHistoryManager *manager)
+{
+    m_chatHistoryManager = manager;
+    if (m_chatHistoryManager) {
+        qDebug() << "ChatController: 聊天历史管理器已设置";
+    }
+}
+
+void ChatController::loadLocalChatHistory(const QString &type, const QString &targetId, int count)
+{
+    if (!m_chatHistoryManager) {
+        qWarning() << "聊天历史管理器未设置";
+        return;
+    }
+    
+    QJsonArray messages;
+    if (type == "private") {
+        messages = m_chatHistoryManager->getPrivateMessages(targetId, count);
+    } else if (type == "group") {
+        messages = m_chatHistoryManager->getGroupMessages(targetId, count);
+    } else {
+        qWarning() << "无效的聊天类型:" << type;
+        return;
+    }
+    
+    // 转换为QVariantList
+    QVariantList messagesList;
+    for (const auto &value : messages) {
+        if (value.isObject()) {
+            QJsonObject msgObj = value.toObject();
+            QVariantMap msgMap;
+            msgMap["fromUserId"] = msgObj["fromUserId"].toString();
+            msgMap["content"] = msgObj["content"].toString();
+            msgMap["messageId"] = msgObj["messageId"].toString();
+            msgMap["timestamp"] = msgObj["timestamp"].toVariant();
+            msgMap["isRead"] = msgObj["isRead"].toBool();
+            msgMap["recalled"] = msgObj["recalled"].toBool();
+            
+            if (type == "private") {
+                msgMap["toUserId"] = msgObj["toUserId"].toString();
+            } else if (type == "group") {
+                msgMap["groupId"] = msgObj["groupId"].toString();
+            }
+            
+            messagesList.append(msgMap);
+        }
+    }
+    
+    emit localChatHistoryLoaded(type, targetId, messagesList);
+    qDebug() << "加载本地聊天记录:" << type << targetId << "消息数量:" << messagesList.size();
+}
+
+void ChatController::clearChatHistory(const QString &type, const QString &targetId)
+{
+    if (!m_chatHistoryManager) {
+        qWarning() << "聊天历史管理器未设置";
+        return;
+    }
+    
+    bool isGroup = (type == "group");
+    m_chatHistoryManager->clearChatHistory(targetId, isGroup);
+    qDebug() << "清空聊天记录:" << type << targetId;
+}
+
+void ChatController::processOfflineMessages()
+{
+    if (!m_chatHistoryManager) {
+        qWarning() << "聊天历史管理器未设置";
+        return;
+    }
+    
+    QJsonArray offlineMessages = m_chatHistoryManager->getOfflineMessages();
+    int processedCount = 0;
+    
+    for (const auto &value : offlineMessages) {
+        if (value.isObject()) {
+            QJsonObject msgObj = value.toObject();
+            QString messageType = msgObj["type"].toString();
+            
+            if (messageType == "private") {
+                emit privateMessageReceived(
+                    msgObj["fromUserId"].toString(),
+                    msgObj["fromUsername"].toString(),
+                    msgObj["content"].toString(),
+                    msgObj["messageId"].toString(),
+                    QString::number(msgObj["timestamp"].toVariant().toLongLong())
+                );
+            } else if (messageType == "group") {
+                emit groupMessageReceived(
+                    msgObj["groupId"].toString(),
+                    msgObj["fromUserId"].toString(),
+                    msgObj["fromUsername"].toString(),
+                    msgObj["content"].toString(),
+                    msgObj["messageId"].toString(),
+                    QString::number(msgObj["timestamp"].toVariant().toLongLong())
+                );
+            }
+            processedCount++;
+        }
+    }
+    
+    // 清空已处理的离线消息
+    if (processedCount > 0) {
+        m_chatHistoryManager->clearOfflineMessages();
+        emit offlineMessagesProcessed(processedCount);
+        qDebug() << "处理离线消息:" << processedCount << "条";
+    }
+}
+
+void ChatController::clearOfflineMessages()
+{
+    if (!m_chatHistoryManager) {
+        qWarning() << "聊天历史管理器未设置";
+        return;
+    }
+    
+    m_chatHistoryManager->clearOfflineMessages();
+    qDebug() << "清空离线消息";
+}
+
+void ChatController::initializeChatHistory(const QString &userId)
+{
+    if (!m_chatHistoryManager) {
+        qWarning() << "聊天历史管理器未设置";
+        return;
+    }
+    
+    // 设置当前用户ID
+    m_currentUserId = userId;
+    
+    if (m_chatHistoryManager->initialize(userId)) {
+        qDebug() << "聊天历史管理器初始化成功，用户ID:" << userId;
+        
+        // 处理离线消息
+        processOfflineMessages();
+    } else {
+        qWarning() << "聊天历史管理器初始化失败";
+    }
+}
+
+void ChatController::onUserLoggedIn(const QString &userId)
+{
+    qDebug() << "ChatController: 用户登录成功，ID:" << userId;
+    initializeChatHistory(userId);
 }

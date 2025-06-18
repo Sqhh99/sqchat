@@ -8,10 +8,9 @@ ApplicationWindow {
     height: 800
     title: "SQChat - 聊天"
     visible: true
-    
-    // 全局状态管理
-    property string currentChatId: "emily"
-    property string currentChatName: "Emily Johnson"
+      // 全局状态管理
+    property string currentChatId: ""
+    property string currentChatName: ""
     property bool isTyping: false
     property string searchText: ""
     property bool settingsVisible: false

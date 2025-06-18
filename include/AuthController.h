@@ -51,8 +51,7 @@ signals:
     void loginStateChanged();
     void currentUserChanged();
     void connectionStateChanged();
-    
-    // 操作结果信号
+      // 操作结果信号
     void loginSuccess(const QString &userId, const QString &username);
     void loginFailed(const QString &error);
     void logoutSuccess();
@@ -63,6 +62,9 @@ signals:
     
     void verifyCodeSent();
     void verifyCodeFailed(const QString &error);
+    
+    // 用户状态信号
+    void userLoggedIn(const QString &userId);
     
     // 连接状态信号
     void connected();

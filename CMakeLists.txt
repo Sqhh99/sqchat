@@ -21,11 +21,13 @@ qt_add_executable(appsqchat
     src/AuthController.cpp
     src/Message.cpp
     src/ChatController.cpp
+    src/ChatHistoryManager.cpp
     include/NetworkManager.h
     include/AuthController.h
     include/Message.h
     include/MessageType.h
     include/ChatController.h
+    include/ChatHistoryManager.h
 )
 
 # 设置包含目录
