@@ -40,20 +40,20 @@ qt_add_qml_module(appsqchat
     VERSION 1.0
     NO_GENERATE_QMLTYPES
     QML_FILES
-        Main.qml
-        LoginWindow.qml
-        RegisterWindow.qml
-        ChatWindow.qml
-        ContactSidebar.qml
-        ContactItem.qml
-        ChatArea.qml
-        ChatHeader.qml
-        MessageBubble.qml
-        MessageInput.qml
-        SettingsDialog.qml
-        NotificationManager.qml
-        NotificationPopup.qml
-        AddFriendDialog.qml
+        qml/Main.qml
+        qml/LoginWindow.qml
+        qml/RegisterWindow.qml
+        qml/ChatWindow.qml
+        qml/ContactSidebar.qml
+        qml/ContactItem.qml
+        qml/ChatArea.qml
+        qml/ChatHeader.qml
+        qml/MessageBubble.qml
+        qml/MessageInput.qml
+        qml/SettingsDialog.qml
+        qml/NotificationManager.qml
+        qml/NotificationPopup.qml
+        qml/AddFriendDialog.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
